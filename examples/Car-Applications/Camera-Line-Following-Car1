@@ -1,118 +1,131 @@
 #include <Wire.h>
+#include <Adafruit_PyCamera.h>
 #include <L293D.h>
-#include <esp_camera.h>
-#include <WiFi.h>
 
-// Định nghĩa chân động cơ
-#define MOTOR1_EN 9
-#define MOTOR1_IN1 7
-#define MOTOR1_IN2 8
+// Khởi tạo thư viện PyCamera
+Adafruit_PyCamera camera;
 
-#define MOTOR2_EN 10
-#define MOTOR2_IN3 5
-#define MOTOR2_IN4 6
+// Định nghĩa các chân động cơ với mạch L293D
+#define MOTOR1_EN 5  // Động cơ 1
+#define MOTOR1_IN1 4
+#define MOTOR1_IN2 3
+
+#define MOTOR2_EN 6  // Động cơ 2
+#define MOTOR2_IN1 7
+#define MOTOR2_IN2 8
+
+#define MOTOR3_EN 9  // Động cơ 3
+#define MOTOR3_IN1 10
+#define MOTOR3_IN2 11
+
+#define MOTOR4_EN 12 // Động cơ 4
+#define MOTOR4_IN1 13
+#define MOTOR4_IN2 2
+
+// Cấu hình tốc độ động cơ
+#define BASE_SPEED 150
+#define TURN_SPEED 100
 
 L293D motor1(MOTOR1_EN, MOTOR1_IN1, MOTOR1_IN2);
-L293D motor2(MOTOR2_EN, MOTOR2_IN3, MOTOR2_IN4);
+L293D motor2(MOTOR2_EN, MOTOR2_IN1, MOTOR2_IN2);
+L293D motor3(MOTOR3_EN, MOTOR3_IN1, MOTOR3_IN2);
+L293D motor4(MOTOR4_EN, MOTOR4_IN1, MOTOR4_IN2);
 
-// Kết nối Wi-Fi (nếu cần phát hình ảnh debug)
-const char* ssid = "your_SSID";
-const char* password = "your_PASSWORD";
+// Hàm điều khiển xe tiến thẳng
+void moveForward() {
+  motor1.setSpeed(BASE_SPEED);
+  motor2.setSpeed(BASE_SPEED);
+  motor3.setSpeed(BASE_SPEED);
+  motor4.setSpeed(BASE_SPEED);
 
-// Định nghĩa các thông số camera
-#define PWDN_GPIO_NUM -1
-#define RESET_GPIO_NUM -1
-#define XCLK_GPIO_NUM 0
-#define SIOD_GPIO_NUM 26
-#define SIOC_GPIO_NUM 27
+  motor1.forward();
+  motor2.forward();
+  motor3.forward();
+  motor4.forward();
+}
 
-#define Y9_GPIO_NUM 35
-#define Y8_GPIO_NUM 34
-#define Y7_GPIO_NUM 39
-#define Y6_GPIO_NUM 36
-#define Y5_GPIO_NUM 21
-#define Y4_GPIO_NUM 19
-#define Y3_GPIO_NUM 18
-#define Y2_GPIO_NUM 5
-#define VSYNC_GPIO_NUM 25
-#define HREF_GPIO_NUM 23
-#define PCLK_GPIO_NUM 22
+// Hàm điều khiển xe rẽ trái
+void turnLeft() {
+  motor1.setSpeed(TURN_SPEED);
+  motor2.setSpeed(TURN_SPEED);
+  motor3.setSpeed(TURN_SPEED);
+  motor4.setSpeed(TURN_SPEED);
+
+  motor1.backward();  // Bánh trái lùi lại
+  motor2.backward();
+  motor3.forward();   // Bánh phải tiến lên
+  motor4.forward();
+}
+
+// Hàm điều khiển xe rẽ phải
+void turnRight() {
+  motor1.setSpeed(TURN_SPEED);
+  motor2.setSpeed(TURN_SPEED);
+  motor3.setSpeed(TURN_SPEED);
+  motor4.setSpeed(TURN_SPEED);
+
+  motor1.forward();   // Bánh trái tiến lên
+  motor2.forward();
+  motor3.backward();  // Bánh phải lùi lại
+  motor4.backward();
+}
+
+// Hàm dừng xe
+void stopMotors() {
+  motor1.stop();
+  motor2.stop();
+  motor3.stop();
+  motor4.stop();
+}
 
 void setup() {
-  Serial.begin(115200);
-
-  // Khởi tạo Wi-Fi
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("WiFi connected");
-
-  // Khởi tạo camera
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM;
-  config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM;
-  config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM;
-  config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM;
-  config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM;
-  config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM;
-  config.pin_href = HREF_GPIO_NUM;
-  config.pin_sscb_sda = SIOD_GPIO_NUM;
-  config.pin_sscb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM;
-  config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000;
-  config.pixel_format = PIXFORMAT_JPEG; 
-
-  // Khởi tạo camera
-  if (esp_camera_init(&config) != ESP_OK) {
-    Serial.println("Failed to initialize camera");
-    while (true);
-  }
-
   // Khởi tạo động cơ
   motor1.begin();
   motor2.begin();
+  motor3.begin();
+  motor4.begin();
+
+  // Khởi tạo giao tiếp camera
+  if (!camera.begin()) {
+    Serial.println("Không thể khởi tạo camera! Hãy kiểm tra kết nối.");
+    while (1);
+  }
+  
+  Serial.begin(115200);
+  Serial.println("Camera khởi động thành công. Bắt đầu dò line...");
 }
 
 void loop() {
-  // Chụp ảnh
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Camera capture failed");
+  // Chụp hình từ camera
+  if (!camera.capture()) {
+    Serial.println("Không thể chụp hình.");
+    stopMotors();
     return;
   }
 
-  // Phân tích hình ảnh để dò vạch line (ví dụ: dựa trên màu sắc hoặc vị trí)
-  bool lineDetected = processLineDetection(fb->buf, fb->len);
+  // Xử lý ảnh và xác định vị trí của vạch line
+  int linePosition = camera.detectLine(); // detectLine() trả về vị trí của vạch line
+  Serial.print("Vị trí vạch line: ");
+  Serial.println(linePosition);
 
-  if (lineDetected) {
-    Serial.println("Line detected: Move forward");
-    motor1.forward(100);
-    motor2.forward(100);
+  // Điều khiển xe dựa vào vị trí vạch line
+  if (linePosition == -1) {
+    // Không tìm thấy vạch line
+    stopMotors();
+    Serial.println("Không tìm thấy vạch line.");
+  } else if (linePosition < 30) {
+    // Vạch line lệch sang trái
+    turnLeft();
+    Serial.println("Rẽ trái.");
+  } else if (linePosition > 70) {
+    // Vạch line lệch sang phải
+    turnRight();
+    Serial.println("Rẽ phải.");
   } else {
-    Serial.println("Line lost: Stop");
-    motor1.stop();
-    motor2.stop();
+    // Vạch line ở giữa
+    moveForward();
+    Serial.println("Tiến thẳng.");
   }
 
-  // Giải phóng bộ nhớ ảnh
-  esp_camera_fb_return(fb);
-
-  delay(100);
-}
-
-// Hàm xử lý dò line (dùng AI hoặc phân tích ảnh đơn giản)
-bool processLineDetection(uint8_t *image, size_t length) {
-  // Placeholder: Xử lý hình ảnh tại đây (OpenCV hoặc các phương pháp xử lý đơn giản).
-  // Trả về true nếu phát hiện line, ngược lại trả về false.
-  return true; // Tạm thời luôn nhận diện được line
+  delay(50); // Thời gian lặp
 }
